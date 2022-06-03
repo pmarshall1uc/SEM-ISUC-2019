@@ -1,9 +1,6 @@
 # SEM-ISUC-2019
 
-<style>
-body {
-text-align: justify}
-</style>
+<p align="right">text</p>
 
 ### Español
 
