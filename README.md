@@ -1,7 +1,6 @@
 # SEM-ISUC-2019
 
 
-
 ### Español
 
 <p align="justify">
