@@ -14,6 +14,7 @@ El objetivo del proyecto era analizar la relación entre auto-interés, medido a t
 
 ### English
 
-<p align="justify">This repository contains the Rmarkdown file used in the data analysis from the project "Preferences for social policies: Evaluation from a model of structural structures for the Chilean case", by José Daniel Conejetos (GitHub: JDConejeros) and Pío Marshall. The project was developed in the context of the Structural Equations Model course, at the Institute of Sociology of the Pontifical Catholic University of Chile in 2019.
+<p align="justify">This repository contains the Rmarkdown file used in the data analysis from the project "Preferences for social policies: Evaluation from a model of structural structures for the Chilean case", by José Daniel Conejetos (GitHub: JDConejeros) and Pío Marshall. The project was developed in the context of the Structural Equations Model course, at the Institute of Sociology of the Pontifical Catholic University of Chile in 2019.</p>
 
+<p align="justify">
 The objective of the project was to analyze the relationship between self-interest, measured through the income quintile, and preference for redistributive social policies through structural equation models. For this, the authors used data from the ISSP (International Social Survey Programme), carrying out (i) a confirmatory analysis of two dimensions of redistributive policies and (ii) an analysis of invariance according to income quintile.</p>
