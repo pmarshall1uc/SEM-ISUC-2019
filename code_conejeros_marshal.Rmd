@@ -1,0 +1,596 @@
+---
+title: 'Documento de código: Análisis SEM preferencias por gasto social: ISSP'
+author: "Conejeros, J. Marshall, P."
+date: "22/04/2019"
+output:
+  html_document: default
+  pdf_document: default
+  word_document: default
+---
+
+A continuación se presenta el documento de código con los principales análisis realizados. Se expone un análisis factorial exploratorio para identificar constructos latentes y se realiza un análisis factorial confirmatorio para evaluar un modelo teórico para la variable de preferencias redistributivas, en definitiva preferencia por gasto social. Los datos utilizados corresponden a la International Social Survey Programme de la sección Role of Government para el año 2016. 
+
++ Paquetes de trabajo
+
+```{r Packages, message=FALSE, warning=FALSE}
+Sys.setlocale("LC_ALL", "ES_ES.UTF-8")
+options(scipen=999) #Desactiva la notación científica
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load(stargazer, # Reporte a latex
+sjPlot, sjmisc, # reporte y gráficos
+corrplot, # grafico correlaciones
+xtable, # Reporte a latex
+Hmisc, # varias funciones
+psych, # fa y principal factors
+psy, # scree plot function
+nFactors, # parallel
+GPArotation, # rotación
+snakecase,
+haven,
+car,
+semTools,
+ggplot,
+ggplot2, 
+lavaan, 
+semPlot,
+multivariate,
+texreg,
+foreign,
+dplyr,
+poLCA)
+search()
+```
+
++ Lectura bases de datos  
+
+```{r Database, echo=TRUE, message=FALSE, warning=FALSE}
+#Directorio y Bases de datos
+#issp <- read_dta("C:/Users/pmars/Dropbox/Investigación_SEM/Análisis/BBDD/ISSP/ZA6900_v2-0-0.dta")
+issp <- read_dta("/Users/jdconejeros/Dropbox/Magister_Sociologia/III/SOL3067_Ecuaciones_Estructurales/Investigación_SEM/Análisis/BBDD/ISSP/ZA6900_v2-0-0.dta")
+
+#Original: Análisis preferencias redistributivas
+issp <- as.data.frame(issp)
+names(issp)= tolower(names(issp)) #Nombre de las variables en 
+#Minúscula
+names(issp)
+#Filtrar base de datos solo para Chile
+issp <- issp[(issp$country==152),] #1416 observaciones
+head(issp)
+#Análisis de Casos Duplicados: No hay observaciones duplicadas
+issp <- unique(issp, by=issp$caseid) 
+```
+
+**Variable dependiente e independiente** 
+
++ Exploración y ajuste de los datos
+
+```{r Database edit redistribución, echo=TRUE, message=FALSE, warning=FALSE}
+#Exploración del indicador de interés
+table(issp$v13)
+table(issp$v14)
+table(issp$v15)
+table(issp$v16)
+table(issp$v17)
+table(issp$v18)
+table(issp$v19)
+table(issp$v20)
+
+#1=Gastar mucho más
+#2=Gastar más
+#3=Gastar lo mismo que ahora
+#4=Gastar menos
+#5=Gastar mucho menos
+#8=No sabe
+#9=No responde
+
+#Recodificar variables de interés para eliminar casos perdidos
+issp$v13[issp$v13>=8] <- NA
+issp$v14[issp$v14>=8] <- NA
+issp$v15[issp$v15>=8] <- NA
+issp$v16[issp$v16>=8] <- NA
+issp$v17[issp$v17>=8] <- NA
+issp$v18[issp$v18>=8] <- NA
+issp$v19[issp$v19>=8] <- NA
+issp$v20[issp$v20>=8] <- NA
+
+#Transformamos la variable a escala numérica
+issp$v13 <- as.numeric(issp$v13)
+issp$v14 <- as.numeric(issp$v14)
+issp$v15 <- as.numeric(issp$v15)
+issp$v16 <- as.numeric(issp$v16)
+issp$v17 <- as.numeric(issp$v17)
+issp$v18 <- as.numeric(issp$v18)
+issp$v19 <- as.numeric(issp$v19)
+issp$v20 <- as.numeric(issp$v20)
+
+#Se invierten las escalas para medir de menos a más preferencia por gasto en políticas sociales
+issp$ambiente =  6 - issp$v13
+issp$salud =  6 - issp$v14
+issp$policia =  6 - issp$v15
+issp$educacion =  6 - issp$v16
+issp$ffaa =  6 - issp$v17
+issp$pensiones =  6 - issp$v18
+issp$desempleo =  6 - issp$v19
+issp$cultura =  6 - issp$v20
+
+#Se corrobora el indicador de interés 
+table(issp$v13, issp$ambiente)
+table(issp$v14, issp$salud)
+table(issp$v15, issp$policia)
+table(issp$v16, issp$educacion)
+table(issp$v17, issp$ffaa)
+table(issp$v18, issp$pensiones)
+table(issp$v19, issp$desempleo)
+table(issp$v20, issp$cultura)
+
+```
+
++ Variables independientes
+
+```{r Variables, echo=TRUE, message=FALSE, warning=FALSE} 
+#Sexo ("mujer") mujer=1, hombre=0
+issp$mujer <-as.numeric(issp$sex - 1)
+issp$mujer <-factor(issp$mujer, levels = c(0,1), labels = c("Hombre", "Mujer"))
+table(issp$sex, issp$mujer) 
+
+#Edad
+issp$edad = issp$age
+issp$edad <- as.numeric(issp$edad)
+describe(issp$edad) 
+
+#Educación en años (continua)
+issp$educ1 = as.numeric(issp$educyrs) 
+issp$educ1[issp$educ1==98] <- NA
+issp$educ1[issp$educ1==99] <- NA
+table(issp$educ1)
+
+#Educación en niveles
+issp$educ2 = as.factor(issp$cl_degr) 
+issp$educ2=rec(issp$educ2, rec="1:3=1; 4:5=2; 6:10=3; 99=4")
+issp$educ2 <-factor(issp$educ2, levels = c(1,2,3,4), labels = c("Primaria", "Secondaria", "Universitaria", "No declarada"))
+table(issp$cl_degr, issp$educ2)
+
+#Posición social
+issp$possocial = as.numeric(issp$topbot)
+issp$possocial[issp$possocial==98] <- NA
+issp$possocial[issp$possocial==99] <- NA
+table(issp$possocial)# 1(más bajo) a 10(más alto). 95 missing
+
+#Posición política (a partir de voto)
+issp$pospol <- as.factor(issp$party_lr)
+issp$pospol = rec(issp$pospol, rec="4=1; 3=2; 1:2=3; 0=4; 6:99=4")
+issp$pospol <-factor(issp$pospol, levels = c(1,2,3, 4), labels = c("Derecha", "Centro", "Izquierda", "No declarada"))
+table(issp$pospol)
+
+#Trabajo
+issp$trabajo = as.factor(issp$mainstat)
+issp$trabajo[issp$trabajo==99] <- NA
+issp$trabajo[issp$trabajo==9] <- NA
+issp$trabajo=rec(issp$trabajo, rec="3=1; 5=1; 6=1; 2=2; 1=3; 7=3")
+issp$trabajo <-factor(issp$trabajo, levels = c(1,2,3), labels = c("No workforce", "Unemployed", "Employee"))
+
+#Personas en el hogar
+issp$nhogar <- as.numeric(issp$hompop)
+issp$nhogar[issp$nhogar==99] <- NA
+table(issp$nhogar) 
+
+#Ingreso del hogar
+issp$ingreso_h <- as.numeric(issp$cl_inc)
+issp$ingreso_h[issp$ingreso_h==9999998] <- NA
+issp$ingreso_h[issp$ingreso_h==9999999] <- NA
+
+#Income per cápita
+issp$ingreso_pc=issp$ingreso_h/issp$nhogar
+issp$ingreso_pc=log(issp$ingreso_pc) #Log ingreso per cápita
+
+```
+
++ Base de datos completa+ ingresos
+
+```{r Base de datos Análisis, echo=TRUE, message=FALSE, warning=FALSE} 
+#Base de datos para estimación de invarianza 
+issp2 <- issp  %>% 
+  dplyr::select(salud, educacion, pensiones, desempleo, ambiente, cultura, ingreso_pc)
+
+#categorizamos los missing
+issp2$ingreso_pc[is.na(issp2$ingreso_pc)] <- 0
+
+#Base con datos completos: 1310 casos
+issp3 = na.omit(issp2)
+
+#Quintiles de ingreso
+issp3$ingreso_pc[(issp3$ingreso_pc==0)] <- NA
+issp3 = 
+  issp3 %>% 
+  mutate(quintil=ntile(ingreso_pc,5))
+issp3$quintil[is.na(issp3$quintil)] <- 6 #Missing
+issp3$quintil <- as.factor(issp3$quintil)
+
+```
+
++ Dummies de Ingreso
+
+```{r Ingresos, echo=TRUE, message=FALSE, warning=FALSE} 
+#Dummies de ingreso 
+#QuintilI
+issp3$q1=rec(issp3$quintil, rec="1=1; 2:6=0")
+#QuintilII
+issp3$q2=rec(issp3$quintil, rec="2=1; 1=0; 3:6=0")
+#QuintilIII
+issp3$q3=rec(issp3$quintil, rec="3=1; 1:2=0; 4:6=0")
+#QuintilIV
+issp3$q4=rec(issp3$quintil, rec="4=1; 1:3=0; 5:6=0")
+#QuintilV
+issp3$q5=rec(issp3$quintil, rec="5=1; 1:4=0; 6=0")
+#No declarado
+issp3$qnd=rec(issp3$quintil, rec="6=1; 1:5=0")
+
+issp3$ingreso_pc <- NULL
+```
+
++ Descriptivos
+
+```{r Descriptives, echo=TRUE, message=FALSE, warning=FALSE}
+#Base de datos con los indicadores de interés 
+prefredis = issp3 %>% 
+  dplyr::select(salud, educacion, pensiones, ambiente, cultura)
+
+#Eliminamos missing
+prefredis <- na.omit(prefredis)
+
+#Gráfico de escala liker
+labels2 <- c("Gastar mucho menos", "Gastar menos",  "Gastar lo mismo que ahora", "Gastar más", "Gastar mucho más")
+items <- c("Salud", "Educación", "Pensiones", "Medio ambiente", "Cultura")
+sjp.likert(prefredis,
+           axis.titles = "Preferencia por Gasto",
+           legend.labels = labels2,
+           axis.labels = items,
+           cat.neutral = 3, # identifica a indiferentes
+           geom.colors = "PuBu", # colorbrewer2.org para temas 
+           sort.frq = "neg.asc", # sort descending
+           digits = 0,
+           geom.size = 0.5,
+           prnt.plot = TRUE
+           ) 
+
+#Distribución de la preferencia de gasto
+sjt.stackfrq(prefredis, value.labels = labels2)
+
+#Descriptivos Quintiles
+prop.table(table(issp3$quintil))
+describe(prefredis)
+summary(prefredis)
+
+```
+
++ Análisis de matriz de correlaciones
+
+```{r Correlaciones, echo=TRUE, message=FALSE, warning=FALSE}
+#Matriz de correlaciones
+corMat1  <- polychoric(prefredis)  # estimar matriz pearson
+corMat1  <- as.matrix(corMat1$rho)
+corMat2  <- cor(prefredis) 
+options(digits=3)
+corMat1
+corMat2 # muestra matriz
+xtable(corMat1)
+
+#Gráfico de correlaciones 
+corrplot(corMat1, type="lower", order="FPC") # lower x bajo diagonal
+corrplot(corMat2, type="lower", order="FPC") # lower x bajo diagonal
+```
+
+**Análisis Factorial exploratorio preferencias por políticas sociales**
+
++ EFA:
+
+```{r Datos EFA, echo=TRUE, message=FALSE, warning=FALSE}
+#Adecuación muestral
+KMO(corMat1) #Indice de adecuación muestral, ve si las correlaciones son de baja magnitud. Menor a 0,5 no amerita análisis factorial exploratorio. Correlaciones alta magnitud (>0,5) amerita análisis factorial exploratorio
+
+#Significancia de las correlaciones
+cortest.bartlett(corMat1, n = 1310) #Significativo el valor p
+
+#Gráfico para aplicar criterio de Kaiser
+scree.plot(corMat1, title = "Gráfico de sedimentación") #Se observan dos factores 
+
+#Análisis de curvas paralelas
+fa.parallel(corMat1, main="Análisis de curvas paralelas", ylabel="Eigenvalues",n.obs=1310)  #Discrepancia con el número de factores. Análisis paralelo sugiera 1 factor al igual que el número de componentes
+
+# Factor de aceleración: Coordenada optima de factores=1
+library(nFactors)
+ev2 <- eigen(corMat1) # get eigenvalues
+ap2 <- parallel(subject=1310,var=5,
+  rep=100,cent=.05)
+nS <- nScree(x=ev2$values, aparallel=ap2$eigen$qevpea)
+plotnScree(nS, main="Solución no gráfica para el gráfico de sedimentación", xlab   = "Componentes")
+```
+
++ EFA: Extracción de factores
+
+```{r Extracción, echo=TRUE, message=FALSE, warning=FALSE}
+#Ejes principales
+#1 Factor
+fac_pa1 <- fa(r = prefredis, nfactors = 1, fm= "pa")
+summary(fac_pa1)
+fac_pa1
+#2 Factor
+fac_pa2 <- fa(r = prefredis, nfactors = 2, fm= "pa")
+summary(fac_pa2)
+fac_pa2
+
+#Vía Máxima verosimilitud
+fac_ml2 <- fa(r = prefredis, nfactors = 2, fm= "ml")
+summary(fac_ml2)
+fac_ml2 
+
+#Gráfico de cargas factoriales vía verosimilitud
+factor.plot(fac_ml2, labels=rownames(fac_ml2$loadings))
+#Definir puntajes factoriales en función de los factores seleccionados
+
+```
+
++ EFA: Rotación. Se opta por dos factores por el momento y se procede a una rotación oblicua asumiendo correlación entre factores. 
+
+```{r Rotación, echo=TRUE, message=FALSE, warning=FALSE}
+#Rotación oblicua (Promax) - Uso de ejes principales
+fac_pa_pro1 <- fa(r = corMat2, nfactors = 1, fm= "pa", rotate="promax") #oblicua --> variables latentes corelacionadas.
+fac_pa_pro1
+fac_pa_pro2 <- fa(r = corMat2, nfactors = 2, fm= "pa", rotate="promax") #oblicua --> variables latentes corelacionadas.
+fac_pa_pro2
+
+#A latex
+fa2latex(fac_pa_pro2)
+cronbach(prefredis)
+```
+
++ EFA: Puntajes Factoriales y reporte
+
+```{r Puntajes y reporte, echo=TRUE, message=FALSE, warning=FALSE}
+#Puntajes Factoriales
+prefredis2 <- cbind(prefredis, fac_ml2$scores)
+head(prefredis2)
+
+#Reporte de Tabla de análisis factorial
+sjt.fa(prefredis, rotation = "promax", method="pa", nmbr.fctr=2, title = "Análisis factorial preferencias redistributivas")
+```
+
+**Análisis Factorial confirmatorio ideas sobre preferencias redistributivas** 
+
++ Especificación y estimación del modelo 1
+
+```{r Modelo CFA1, echo=TRUE, message=FALSE, warning=FALSE}
+#Especificación CFA1
+cfa1 <- ' 
+social =~ salud + educacion + pensiones 
+posmateriales =~ ambiente + cultura
+'
+
+cfa1
+#Estimación
+fit <- cfa(cfa1, data=prefredis, ordered=c("salud", "educacion", "pensiones", "desempleo","ambiente", "cultura"))
+fit
+
+#Diagrama CFA1
+semPaths(fit, what= "std", title = FALSE, fixedStyle = c(3,3), curvePivot = FALSE, layout = "tree3", rotation=4, edge.label.cex=1.5, style="OpenMx", levels = c(1,2,2.6,5), residuals =TRUE, intercepts = FALSE, thresholds = FALSE, nCharNodes=3, sizeLat=15, sizeMan = 10, edge.color="gray30", nodeLabels=c("Salud","Educ","Pens","Ambt", "Cult", "Social","Postma"))
+
+#Ajustes
+summary(fit, fit.measures=TRUE, standardized=TRUE)
+```
+
++ Ajustes de los modelos: Se observa que el primer modelo ajusta mejor a los datos
+
+```{r Ajuste CFA, echo=TRUE, message=FALSE, warning=FALSE}
+#Ajustes
+show(fit)
+
+#Solución estandarizada de la estimación 
+standardizedSolution(fit)
+
+#Tabla
+print(xtable(standardizedSolution(fit), caption = 'CFA: cargas factoriales estandarizadas'))
+
+#Matriz de covarianza de la muestra
+covpov2=cov(prefredis) 
+lowerMat(covpov2, digits=3)
+
+#Covarianzas del modelo
+fitted(fit)
+
+#Indicadores de medidas de ajuste
+summary(fit, fit.measures = TRUE)
+fitMeasures(fit, c("chisq", "df", "pvalue", "cfi", "tli" ,"rmsea", "srmr"))
+
+```
+
++ Análisis de Invarianza
+
+```{r Invarianza, echo=TRUE, message=FALSE, warning=FALSE}
+#Invarianza para distintos grupos de ingreso: Todos los quintiles 
+#Quintil de ingreso
+fit.conf=cfa(cfa1, data=issp3, group="quintil")
+fit.deb=cfa(cfa1, data=issp3, group="quintil", group.equal = c("loadings"))
+fit.fuer=cfa(cfa1, data=issp3, group="quintil", group.equal = c("loadings", "intercepts"))
+fit.str=cfa(cfa1, data=issp3, group="quintil", group.equal = c("loadings", "intercepts", "residuals"))
+anova(fit.conf, fit.deb, fit.fuer, fit.str)
+
+fit.indices=c("cfi","tli","rmsea", "srmr")
+fitMeasures(fit.conf,fit.indices)
+fitMeasures(fit.deb,fit.indices)
+fitMeasures(fit.fuer,fit.indices)
+fitMeasures(fit.str,fit.indices)
+
+measurementInvariance(model=cfa1, data = issp3, group = "quintil")
+
+#Quintil I:
+fit.conf1=cfa(cfa1, data=issp3, group="q1")
+fit.deb1=cfa(cfa1, data=issp3, group="q1", group.equal = c("loadings"))
+fit.fuer1=cfa(cfa1, data=issp3, group="q1", group.equal = c("loadings", "intercepts"))
+fit.str1=cfa(cfa1, data=issp3, group="q1", group.equal = c("loadings", "intercepts", "residuals"))
+anova(fit.conf1, fit.deb1, fit.fuer1, fit.str1)
+
+fit.indices=c("cfi","tli","rmsea", "srmr")
+fitMeasures(fit.conf1,fit.indices)
+fitMeasures(fit.deb1,fit.indices)
+fitMeasures(fit.fuer1,fit.indices)
+fitMeasures(fit.str1,fit.indices)
+
+measurementInvariance(model=cfa1, data = issp3, group = "q1")
+
+
+#Quintil V: 
+fit.conf5=cfa(cfa1, data=issp3, group="q5")
+fit.deb5=cfa(cfa1, data=issp3, group="q5", group.equal = c("loadings"))
+fit.fuer5=cfa(cfa1, data=issp3, group="q5", group.equal = c("loadings", "intercepts"))
+fit.str5=cfa(cfa1, data=issp3, group="q5", group.equal = c("loadings", "intercepts", "residuals"))
+anova(fit.conf5, fit.deb5, fit.fuer5, fit.str5)
+
+fit.indices=c("cfi","tli","rmsea", "srmr")
+fitMeasures(fit.conf5,fit.indices)
+fitMeasures(fit.deb5,fit.indices)
+fitMeasures(fit.fuer5,fit.indices)
+fitMeasures(fit.str5,fit.indices)
+
+measurementInvariance(model=cfa1, data = issp3, group = "q5")
+```
+
+```{r Fuentes de invarianza, echo=TRUE, message=FALSE, warning=FALSE}
+#Fuente de invarianza: parámetros que influyen en la pérdida de ajuste para el quintil I
+lavTestScore(fit.str1)
+dfit.str1=partable(fit.str1)
+subset(dfit.str1,select=lhs:plabel) #Mayor diferencia en temas de educación
+
+#Estimación de modelo de invarianza estricta parcial
+fit.str.par1=cfa(cfa1, data=issp3, group="q1", group.equal = c("loadings", "intercepts", "residuals"),
+group.partial=c("educacion~~educacion") )
+summary(fit.str.par1, fit.measures=TRUE)
+
+#Se corrobora que mejora el ajuste del modelo
+anova(fit.fuer1, fit.str1)
+anova(fit.fuer1, fit.str.par1)
+
+#Fuente de invarianza: parámetros que influyen en la pérdida de ajuste para el quintil V  
+lavTestScore(fit.str5)
+dfit.str5=partable(fit.str5)
+subset(dfit.str5,select=lhs:plabel) #Mayor diferencia en temas de educación
+
+#Estimación de modelo de invarianza estricta parcial
+fit.str.par5=cfa(cfa1, data=issp3, group="q5", group.equal = c("loadings", "intercepts", "residuals"),
+group.partial=c("salud~~salud") )
+summary(fit.str.par5, fit.measures=TRUE)
+
+#Se corrobora que mejora el ajuste del modelo
+anova(fit.fuer5, fit.str5)
+anova(fit.fuer5, fit.str.par5)
+```
+
++ Modelo Full SEM
+
+```{r Full SEM, echo=TRUE, message=FALSE, warning=FALSE}
+#Modelo para variable latente de preferencia por gasto social indirecto
+model_1 <- '
+  social =~ salud + educacion + pensiones 
+  # Path / regresiones
+  social ~ q1 + q2 + q3 + q4 + q5 
+  '
+fit_model1 <- sem(model_1, data=issp3)
+
+summary(fit_model1, fit.measures=TRUE, standardized=TRUE)
+fitMeasures(fit_model1, c("chisq", "df", "pvalue", "cfi","rmsea" ))
+partable(fit_model1)
+
+#Modelo para variable latente de preferencia por gasto social postmaterial
+model_2 <- '
+  posmateriales =~ ambiente + cultura
+  # Path / regresiones
+  posmateriales ~ q1 + q2 + q3 + q4 + q5 
+  '
+fit_model2 <- sem(model_2, data=issp3)
+
+summary(fit_model2, fit.measures=TRUE, standardized=TRUE)
+fitMeasures(fit_model2, c("chisq", "df", "pvalue", "cfi","rmsea" ))
+partable(fit_model2)
+```
+
++ Apéndice: CFA Incluyendo desempleo 
+
++ Especificación y estimación del modelo 2
+
+```{r Modelo CFA2, echo=TRUE, message=FALSE, warning=FALSE}
+prefredis_2 = issp3 %>% 
+  dplyr::select(salud, educacion, pensiones, desempleo, ambiente, cultura)
+
+#Especificación CFA2
+cfa2 <- ' 
+social =~ salud + educacion + pensiones + desempleo
+posmateriales =~ ambiente + cultura
+'
+
+cfa2
+#Estimación
+fit2 <- cfa(cfa2, data=prefredis_2, ordered=c("salud", "educacion", "pensiones", "desempleo","ambiente", "cultura"))
+fit2
+
+#Diagrama CFA1
+semPaths(fit2, what= "std", title = FALSE, fixedStyle = c(3,3), curvePivot = FALSE, layout = "tree3", rotation=4, edge.label.cex=1.5, style="OpenMx", levels = c(1,2,2.6,5), residuals =TRUE, intercepts = FALSE, thresholds = FALSE, nCharNodes=3, sizeLat=15, sizeMan = 10, edge.color="gray30", nodeLabels=c("Salud","Educ","Pens", "Des","Ambt", "Cult", "Social","Postma"))
+
+#Ajustes
+summary(fit2, fit.measures=TRUE, standardized=TRUE)
+```
+
++ Ajustes de los modelos: Se observa que el primer modelo ajusta mejor a los datos
+
+```{r Ajuste CFA2, echo=TRUE, message=FALSE, warning=FALSE}
+#Ajustes
+show(fit2)
+
+#Solución estandarizada de la estimación 
+standardizedSolution(fit2)
+
+#Tabla
+print(xtable(standardizedSolution(fit2), caption = 'CFA: cargas factoriales estandarizadas'))
+
+#Matriz de covarianza de la muestra
+covpov2=cov(prefredis_2) 
+lowerMat(covpov2, digits=3)
+
+#Covarianzas del modelo
+fitted(fit2)
+
+#Indicadores de medidas de ajuste
+summary(fit2, fit.measures = TRUE)
+fitMeasures(fit2, c("chisq", "df", "pvalue", "cfi", "tli" ,"rmsea", "srmr"))
+
+```
+
++ Modificación del modelo para mejorar ajuste
+
+```{r Modicación y restricciones, echo=TRUE, message=FALSE, warning=FALSE}
+mod=modificationindices(fit2)
+#Superiores al valor crítico de X^2 para 1 gl a 0.05=3.84
+subset(mod, mi>3.84, select=lhs:mi)
+
+#Modelo con la modificación recomendada
+cfa_mod <- '
+# latent variables
+social =~ salud + educacion + pensiones + desempleo
+posmateriales =~ ambiente + cultura
+posmateriales =~ desempleo
+'
+
+model_mod <- cfa(cfa_mod, data=prefredis_2, ordered=c("salud", "educacion", "pensiones", "desempleo",  "ambiente", "cultura"))
+
+
+#Modelo
+semPaths(model_mod, what= "std", title = FALSE, fixedStyle = c(3,3), curvePivot = FALSE, layout = "tree3", rotation=4, edge.label.cex=1.5, style="OpenMx", levels = c(1,2,2.6,5), residuals =TRUE, intercepts = FALSE, thresholds = FALSE, nCharNodes=3, sizeLat=15, sizeMan = 10, edge.color="gray30", nodeLabels=c("Salud","Educ","Pens", "Des","Ambt", "Cult", "Social","Postma"))
+
+#Ajuste 
+fitMeasures(model_mod, c("chisq", "df", "pvalue", "cfi", "tli" ,"rmsea", "srmr"))
+
+```
+
+
+
+
+
+
